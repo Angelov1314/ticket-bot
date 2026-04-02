@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>演唱会抢票平台</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --panel:    #161b22;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --accent:   #58a6ff;
+    --green:    #3fb950;
+    --red:      #f85149;
+    --yellow:   #d29922;
+    --purple:   #bc8cff;
+    --orange:   #f0883e;
+    --radius:   10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top Bar ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .topbar .logo { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .topbar .logo span { color: var(--green); }
+  .topbar .spacer { flex: 1; }
+  #statusBadge {
+    padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    background: #21262d; color: var(--muted); border: 1px solid var(--border);
+    transition: all .3s;
+  }
+  #statusBadge.running { background: #0d2a1f; color: var(--green); border-color: var(--green); }
+  #statusBadge.found   { background: #2a1f00; color: var(--orange); border-color: var(--orange); }
+  #statusBadge.success { background: #0d1f0d; color: var(--green); border-color: var(--green); }
+  #statusBadge.stopped { background: #2a1216; color: var(--red); border-color: var(--red); }
+  #retryCount { color: var(--muted); font-size: 13px; }
+
+  .btn {
+    padding: 7px 18px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; transition: all .2s;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-green { background: var(--green); color: #000; }
+  .btn-green:hover:not(:disabled) { background: #56d364; }
+  .btn-red   { background: var(--red); color: #fff; }
+  .btn-red:hover:not(:disabled) { background: #ff6b6b; }
+  .btn-gray  { background: #21262d; color: var(--text); border: 1px solid var(--border); }
+  .btn-gray:hover:not(:disabled) { background: #30363d; }
+  .btn-blue  { background: var(--accent); color: #000; }
+  .btn-blue:hover:not(:disabled) { background: #79c0ff; }
+
+  /* ── Main Layout ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+  }
+
+  /* ── Left Panel: Config ── */
+  .sidebar {
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--muted); margin-bottom: 8px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input, .field select, .field textarea {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 7px 10px; font-size: 13px; outline: none;
+    width: 100%;
+    transition: border-color .2s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 40px; font-family: inherit; }
+  .row { display: flex; gap: 8px; }
+  .row .field { flex: 1; }
+
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preset-btn {
+    padding: 4px 10px; border-radius: 5px; border: 1px solid var(--border);
+    background: transparent; color: var(--text); cursor: pointer; font-size: 12px;
+    transition: all .2s;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+  .toggle {
+    position: relative; width: 36px; height: 20px;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider {
+    position: absolute; inset: 0; background: #30363d; border-radius: 20px;
+    cursor: pointer; transition: .2s;
+  }
+  .toggle .slider:before {
+    content: ''; position: absolute; width: 14px; height: 14px;
+    left: 3px; bottom: 3px; background: white; border-radius: 50%;
+    transition: .2s;
+  }
+  .toggle input:checked + .slider { background: var(--green); }
+  .toggle input:checked + .slider:before { transform: translateX(16px); }
+
+  .divider { border: none; border-top: 1px solid var(--border); }
+
+  /* ── Right Panel: Terminal + Screenshot ── */
+  .right-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tabs {
+    display: flex;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+  }
+  .tab {
+    padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--muted); border-bottom: 2px solid transparent;
+    transition: all .2s; margin-bottom: -1px;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .tab-content { flex: 1; overflow: hidden; display: none; }
+  .tab-content.active { display: flex; flex-direction: column; }
+
+  /* Terminal */
+  #terminal {
+    flex: 1; overflow-y: auto; padding: 14px 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.7;
+    background: var(--bg);
+  }
+  #terminal::-webkit-scrollbar { width: 6px; }
+  #terminal::-webkit-scrollbar-track { background: transparent; }
+  #terminal::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .log-line { display: flex; gap: 10px; align-items: baseline; }
+  .log-time { color: #444c56; flex-shrink: 0; font-size: 11px; }
+  .log-tag  { flex-shrink: 0; width: 52px; text-align: right; font-size: 11px; font-weight: 700; border-radius: 3px; padding: 0 4px; }
+  .log-tag.info    { color: var(--accent); }
+  .log-tag.debug   { color: var(--muted); }
+  .log-tag.warn    { color: var(--yellow); }
+  .log-tag.error   { color: var(--red); }
+  .log-tag.success { color: var(--green); }
+  .log-msg { color: var(--text); word-break: break-all; }
+  .log-msg.success { color: var(--green); font-weight: 600; }
+  .log-msg.error   { color: var(--red); }
+  .log-msg.warn    { color: var(--yellow); }
+
+  .term-footer {
+    padding: 8px 16px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--muted);
+  }
+  #logCount { flex: 1; }
+  .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .pulse.off { background: var(--border); }
+
+  /* Screenshot panel */
+  #screenshotPanel {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background: #0a0a0a; overflow: hidden; position: relative;
+  }
+  #screenshotImg { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+  .no-screenshot { color: var(--muted); font-size: 14px; text-align: center; }
+  .screenshot-ts { position: absolute; bottom: 8px; right: 12px; font-size: 11px; color: var(--muted); }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 18px;
+    font-size: 13px; box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    transform: translateY(80px); opacity: 0;
+    transition: all .3s; z-index: 100;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error   { border-color: var(--red); color: var(--red); }
+  #toast.info    { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="logo">🎫 抢<span>票</span>平台</div>
+  <div id="retryCount">重试: 0</div>
+  <div id="statusBadge">● 空闲</div>
+  <div class="spacer"></div>
+  <button class="btn btn-gray" onclick="doLogin()">扫码登录</button>
+  <button class="btn btn-green" id="startBtn" onclick="startBot()">▶ 开始抢票</button>
+  <button class="btn btn-red"   id="stopBtn"  onclick="stopBot()" disabled>■ 停止</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Presets -->
+    <div>
+      <div class="section-title">快速预设</div>
+      <div class="presets">
+        <button class="preset-btn" onclick="loadPreset('jaychou')">🎤 周杰伦</button>
+        <button class="preset-btn" onclick="loadPreset('mayday')">🎵 五月天</button>
+        <button class="preset-btn" onclick="loadPreset('maoyan')">🎭 猫眼演出</button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Platform -->
+    <div>
+      <div class="section-title">平台 & 链接</div>
+      <div class="field">
+        <label>平台</label>
+        <select id="platform" onchange="onPlatformChange()">
+          <option value="damai">大麦网</option>
+          <option value="maoyan">猫眼演出</option>
+          <option value="showstart">秀动</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>演出页面 URL</label>
+        <textarea id="ticketUrl" rows="2" placeholder="https://detail.damai.cn/item.htm?id=..."></textarea>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Buyer -->
+    <div>
+      <div class="section-title">购票人信息</div>
+      <div class="field">
+        <label>姓名</label>
+        <input id="buyerName" placeholder="真实姓名">
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>手机号</label>
+        <input id="buyerPhone" placeholder="13800138000">
+      </div>
+      <div class="field" style="margin-top:8px">
+        <label>身份证号 (实名演出)</label>
+        <input id="buyerIdCard" placeholder="可选">
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Ticket prefs -->
+    <div>
+      <div class="section-title">选票偏好</div>
+      <div class="row">
+        <div class="field">
+          <label>票档偏好</label>
+          <input id="seatType" placeholder="如: 480元">
+        </div>
+        <div class="field">
+          <label>购票数量</label>
+          <input id="quantity" type="number" value="1" min="1" max="6">
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Timing -->
+    <div>
+      <div class="section-title">定时开抢</div>
+      <div class="field">
+        <label>开票时间 (留空立即开始)</label>
+        <input id="startTime" type="datetime-local">
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="field">
+          <label>轮询间隔(秒)</label>
+          <input id="pollInterval" type="number" value="0.8" step="0.1" min="0.3">
+        </div>
+        <div class="field">
+          <label>最大重试次数</label>
+          <input id="maxRetries" type="number" value="50" min="1">
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Options -->
+    <div>
+      <div class="section-title">运行选项</div>
+      <div class="toggle-row" style="margin-bottom:10px">
+        <label style="font-size:13px">🔍 模拟模式 (不实际下单)</label>
+        <label class="toggle">
+          <input type="checkbox" id="simulate" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <label style="font-size:13px">🪟 显示浏览器窗口</label>
+        <label class="toggle">
+          <input type="checkbox" id="headful" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <button class="btn btn-blue" style="width:100%" onclick="saveConfig()">保存配置</button>
+
+  </div><!-- /sidebar -->
+
+  <!-- Right Panel -->
+  <div class="right-panel">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('logs', this)">📋 运行日志</div>
+      <div class="tab" onclick="switchTab('screenshot', this)">📸 浏览器截图</div>
+    </div>
+
+    <!-- Logs Tab -->
+    <div class="tab-content active" id="tab-logs">
+      <div id="terminal">
+        <div class="log-line">
+          <span class="log-time">--:--:--</span>
+          <span class="log-tag info">INFO</span>
+          <span class="log-msg">欢迎使用演唱会抢票平台 — 配置好信息后点击「开始抢票」</span>
+        </div>
+      </div>
+      <div class="term-footer">
+        <span class="pulse off" id="pulseDot"></span>
+        <span id="logCount">0 条日志</span>
+        <button class="btn btn-gray" style="padding:3px 10px;font-size:12px" onclick="clearLogs()">清空</button>
+      </div>
+    </div>
+
+    <!-- Screenshot Tab -->
+    <div class="tab-content" id="tab-screenshot">
+      <div id="screenshotPanel">
+        <div class="no-screenshot" id="noShot">
+          <div style="font-size:48px;margin-bottom:12px">📸</div>
+          <div>启动抢票后，这里会显示实时浏览器截图</div>
+        </div>
+        <img id="screenshotImg" style="display:none">
+        <div class="screenshot-ts" id="screenshotTs"></div>
+      </div>
+    </div>
+  </div><!-- /right-panel -->
+
+</div><!-- /main -->
+
+<div id="toast"></div>
+
+<script>
+// ─── WebSocket ───────────────────────────────────────────────────────────────
+let ws, logCount = 0, isRunning = false;
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws`;
+  ws = new WebSocket(url);
+  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+  ws.onclose   = () => setTimeout(connectWS, 2000);
+  ws.onerror   = () => ws.close();
+}
+connectWS();
+
+function handleMsg(msg) {
+  if (msg.type === 'log')        addLog(msg);
+  if (msg.type === 'screenshot') updateScreenshot(msg.data);
+  if (msg.type === 'status')     updateStatus(msg.state);
+}
+
+// ─── Status ──────────────────────────────────────────────────────────────────
+const STATES = {
+  idle:    { label: '● 空闲',     cls: '' },
+  running: { label: '⟳ 监控中',   cls: 'running' },
+  found:   { label: '🎟 发现有票!', cls: 'found' },
+  success: { label: '✅ 抢票成功!', cls: 'success' },
+  stopped: { label: '■ 已停止',   cls: 'stopped' },
+  error:   { label: '✗ 出错',     cls: 'stopped' },
+};
+
+function updateStatus(state) {
+  const s = STATES[state] || STATES.idle;
+  const badge = document.getElementById('statusBadge');
+  badge.textContent = s.label;
+  badge.className = s.cls;
+  isRunning = (state === 'running' || state === 'found');
+  document.getElementById('startBtn').disabled = isRunning;
+  document.getElementById('stopBtn').disabled  = !isRunning;
+  document.getElementById('pulseDot').className = isRunning ? 'pulse' : 'pulse off';
+  if (state === 'success') {
+    showToast('🎉 订单已提交，请尽快付款！', 'success');
+    playBeep();
+  }
+}
+
+// ─── Logs ────────────────────────────────────────────────────────────────────
+function addLog(entry) {
+  const term = document.getElementById('terminal');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const lvl = entry.level || 'info';
+  line.innerHTML = `
+    <span class="log-time">${entry.time}</span>
+    <span class="log-tag ${lvl}">${lvl.toUpperCase()}</span>
+    <span class="log-msg ${lvl}">${escHtml(entry.message)}</span>
+  `;
+  term.appendChild(line);
+  term.scrollTop = term.scrollHeight;
+  logCount++;
+  document.getElementById('logCount').textContent = `${logCount} 条日志`;
+  if (_bot && _bot.retries) {
+    document.getElementById('retryCount').textContent = `重试: ${_bot.retries}`;
+  }
+}
+
+function clearLogs() {
+  document.getElementById('terminal').innerHTML = '';
+  logCount = 0;
+  document.getElementById('logCount').textContent = '0 条日志';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Poll retries separately
+setInterval(async () => {
+  if (!isRunning) return;
+  const r = await fetch('/api/status').then(x=>x.json());
+  document.getElementById('retryCount').textContent = `重试: ${r.retries}`;
+}, 1500);
+
+// ─── Screenshot ──────────────────────────────────────────────────────────────
+function updateScreenshot(b64) {
+  const img = document.getElementById('screenshotImg');
+  const noShot = document.getElementById('noShot');
+  img.src = 'data:image/png;base64,' + b64;
+  img.style.display = 'block';
+  noShot.style.display = 'none';
+  document.getElementById('screenshotTs').textContent =
+    '截图时间: ' + new Date().toLocaleTimeString('zh-CN');
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ─── Bot Control ─────────────────────────────────────────────────────────────
+async function startBot() {
+  const cfg = buildConfig();
+  const res = await fetch('/api/start', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(cfg)
+  });
+  const data = await res.json();
+  if (!data.ok) { showToast('启动失败: ' + (data.error || ''), 'error'); return; }
+  showToast('抢票任务已启动！', 'info');
+}
+
+async function stopBot() {
+  await fetch('/api/stop', {method:'POST'});
+  showToast('任务已停止', 'info');
+}
+
+async function doLogin() {
+  const platform = document.getElementById('platform').value;
+  await fetch('/api/config', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({platform})
+  });
+  await fetch('/api/login', {method:'POST'});
+  showToast('浏览器已打开，请扫码登录', 'info');
+}
+
+async function saveConfig() {
+  const cfg = buildConfig();
+  await fetch('/api/config', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(cfg)
+  });
+  showToast('配置已保存', 'info');
+}
+
+function buildConfig() {
+  const st = document.getElementById('startTime').value;
+  return {
+    platform:  document.getElementById('platform').value,
+    ticket_url: document.getElementById('ticketUrl').value,
+    simulate:  document.getElementById('simulate').checked,
+    buyer: {
+      name:    document.getElementById('buyerName').value,
+      phone:   document.getElementById('buyerPhone').value,
+      id_card: document.getElementById('buyerIdCard').value,
+    },
+    ticket: {
+      quantity:  parseInt(document.getElementById('quantity').value) || 1,
+      seat_type: document.getElementById('seatType').value,
+    },
+    timing: {
+      start_time:   st ? st.replace('T', ' ') + ':00' : '',
+      poll_interval: parseFloat(document.getElementById('pollInterval').value) || 0.8,
+    },
+    safety: {
+      max_retries:   parseInt(document.getElementById('maxRetries').value) || 50,
+      request_jitter: 0.1,
+    },
+    browser: {
+      headless: !document.getElementById('headful').checked,
+      slow_mo: 0,
+      user_data_dir: '~/.ticket-bot/browser-profile',
+    },
+  };
+}
+
+// ─── Presets ─────────────────────────────────────────────────────────────────
+const PRESETS = {
+  jaychou: {
+    platform: 'damai',
+    url: 'https://search.damai.cn/search.htm?keyword=%E5%91%A8%E6%9D%B0%E4%BC%A6%E5%98%89%E5%B9%B4%E5%8D%8E',
+    name: '周杰伦嘉年华巡演 (大麦网)',
+    seat: '480',
+  },
+  mayday: {
+    platform: 'damai',
+    url: 'https://search.damai.cn/search.htm?keyword=%E4%BA%94%E6%9C%88%E5%A4%A9',
+    name: '五月天演唱会 (大麦网)',
+    seat: '',
+  },
+  maoyan: {
+    platform: 'maoyan',
+    url: 'https://piao.maoyan.com/search?word=%E6%BC%94%E5%94%B1%E4%BC%9A',
+    name: '猫眼演出热门演唱会',
+    seat: '',
+  },
+};
+
+function loadPreset(key) {
+  const p = PRESETS[key];
+  if (!p) return;
+  document.getElementById('platform').value = p.platform;
+  document.getElementById('ticketUrl').value = p.url;
+  if (p.seat) document.getElementById('seatType').value = p.seat;
+  showToast(`已加载预设: ${p.name}`, 'info');
+}
+
+function onPlatformChange() { /* future: update URL placeholder */ }
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  setTimeout(() => { t.className = type; }, 3500);
+}
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine'; osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc.start(); osc.stop(ctx.currentTime + 0.8);
+  } catch(e) {}
+}
+
+// ─── Init: load config ────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    document.getElementById('platform').value    = cfg.platform || 'damai';
+    document.getElementById('ticketUrl').value   = cfg.ticket_url || '';
+    document.getElementById('buyerName').value   = cfg.buyer?.name || '';
+    document.getElementById('buyerPhone').value  = cfg.buyer?.phone || '';
+    document.getElementById('buyerIdCard').value = cfg.buyer?.id_card || '';
+    document.getElementById('quantity').value    = cfg.ticket?.quantity || 1;
+    document.getElementById('seatType').value    = cfg.ticket?.seat_type || '';
+    document.getElementById('pollInterval').value= cfg.timing?.poll_interval || 0.8;
+    document.getElementById('maxRetries').value  = cfg.safety?.max_retries || 50;
+    document.getElementById('simulate').checked  = cfg.simulate !== false;
+    document.getElementById('headful').checked   = !cfg.browser?.headless;
+    if (cfg.timing?.start_time) {
+      document.getElementById('startTime').value =
+        cfg.timing.start_time.replace(' ', 'T').slice(0, 16);
+    }
+    const status = await fetch('/api/status').then(r => r.json());
+    updateStatus(status.state);
+  } catch(e) {
+    console.warn('Init error:', e);
+  }
+}
+init();
+</script>
+</body>
+</html>

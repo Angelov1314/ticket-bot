@@ -1,0 +1,30 @@
+platform: damai
+ticket_url: "https://detail.damai.cn/item.htm?id=XXXXXXXX"
+simulate: true
+
+buyer:
+  name: ""
+  phone: ""
+  id_card: ""
+
+ticket:
+  quantity: 1
+  seat_type: ""
+  session: ""
+
+timing:
+  start_time: ""
+  poll_interval: 0.8
+  pre_start_seconds: 30
+
+browser:
+  headless: true
+  slow_mo: 0
+  user_data_dir: "/tmp/ticket-bot-profile"
+
+notify:
+  sound: false
+
+safety:
+  max_retries: 50
+  request_jitter: 0.1
